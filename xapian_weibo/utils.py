@@ -14,6 +14,9 @@ import multiprocessing
 import operator
 import re
 import socket
+from xml.dom import minidom
+import json
+import csv
 
 SCWS_ENCODING = 'utf-8'
 SCWS_RULES = '/usr/local/scws/etc/rules.utf8.ini'
@@ -187,3 +190,27 @@ def log_to_stub(stub_file_dir, dbpath, db_folder, remote_stub=False):
                 f.write(STUB_REMOTE_FILE_PER_LINE % {"host": host, "db_folder": db_folder})
             else:
                 f.write(STUB_FILE_PER_LINE % {"db_folder": db_folder})
+
+def xml_to_json(filename):
+    doc = minidom.parse("%s.xml"%(filename))  
+    root = doc.documentElement
+    statuss = root.getElementsByTagName("status")
+    json_data = []
+    for status in statuss:
+        #根据status里面的标签名字不同而改变里面的代码   
+        text = status.getElementsByTagName("text")[0]
+        id = status.getElementsByTagName("id")[0]
+        user = status.getElementsByTagName("user")[0]
+        json_data.append({"text":text.childNodes[0].nodeValue,"id":id.childNodes[0].nodeValue,"user":user.childNodes[0].nodeValue})
+
+    #为了便于观察，我把json_data格式的数据以CSV文件输出
+    with open('json.csv', 'wb') as f:
+        writer = csv.writer(f)
+        for i in range(0,len(json_data)):
+            writer.writerow("{")
+            writer.writerow(("text:",json_data[i]["text"].encode('utf-8')))
+            writer.writerow(("id:",json_data[i]["id"]))
+            writer.writerow(("user:",json_data[i]["user"].encode('utf-8')))
+            writer.writerow("}")
+    
+
