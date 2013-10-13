@@ -14,9 +14,10 @@ import multiprocessing
 import operator
 import re
 import socket
-from xml.dom import minidom
+import sys
 import json
 import csv
+import xml.etree.ElementTree as ET
 
 SCWS_ENCODING = 'utf-8'
 SCWS_RULES = '/usr/local/scws/etc/rules.utf8.ini'
@@ -29,7 +30,6 @@ CUSTOM_DICT_PATH = os.path.join(ABSOLUTE_DICT_PATH, 'userdic.txt')
 EXTRA_STOPWORD_PATH = os.path.join(ABSOLUTE_DICT_PATH, 'stopword.dic')
 EXTRA_EMOTIONWORD_PATH = os.path.join(ABSOLUTE_DICT_PATH, 'emotionlist.txt')
 EXTRA_ONE_WORD_WHITE_LIST_PATH = os.path.join(ABSOLUTE_DICT_PATH, 'one_word_white_list.txt')
-
 
 def local2unix(time_str):
     time_format = '%a %b %d %H:%M:%S +0800 %Y'
@@ -192,25 +192,30 @@ def log_to_stub(stub_file_dir, dbpath, db_folder, remote_stub=False):
                 f.write(STUB_FILE_PER_LINE % {"db_folder": db_folder})
 
 def xml_to_json(filename):
-    doc = minidom.parse("%s.xml"%(filename))  
-    root = doc.documentElement
-    statuss = root.getElementsByTagName("status")
-    json_data = []
-    for status in statuss:
-        #根据status里面的标签名字不同而改变里面的代码   
-        text = status.getElementsByTagName("text")[0]
-        id = status.getElementsByTagName("id")[0]
-        user = status.getElementsByTagName("user")[0]
-        json_data.append({"text":text.childNodes[0].nodeValue,"id":id.childNodes[0].nodeValue,"user":user.childNodes[0].nodeValue})
 
-    #为了便于观察，我把json_data格式的数据以CSV文件输出
-    with open('json.csv', 'wb') as f:
-        writer = csv.writer(f)
-        for i in range(0,len(json_data)):
-            writer.writerow("{")
-            writer.writerow(("text:",json_data[i]["text"].encode('utf-8')))
-            writer.writerow(("id:",json_data[i]["id"]))
-            writer.writerow(("user:",json_data[i]["user"].encode('utf-8')))
-            writer.writerow("}")
+    json_data = []#用以存储json格式的数组
+    weibo_item = {}
+    user_item = {}
+    item = {}
+    for event, elem in ET.iterparse('%s.xml'%(filename)):#流式读取 读取的xml文件一定只有一个xml头标签
+        if event == 'end':#匹配tag结束符来读取数据
+            if elem.tag == 'status':#status表示一条微博记录
+                
+                status_items = elem.getchildren()
+                for status_item in status_items:
+                    weibo_item[status_item.tag] = item[status_item.tag]
+                json_data.append(weibo_item)#表示加载一条json记录，涉及到大数据时候可以加载一条读一条
+                
+            elif elem.tag == 'user':#user表示该微博的用户
+                us_items = elem.getchildren()
+                for us_item in us_items:
+                    user_item[us_item.tag] = item[us_item.tag]
+                item['user'] = user_item
+            else:
+                item[elem.tag] = elem.text
+            
+            print elem.tag,elem.text
+        elem.clear() # discard the element
+
     
 
