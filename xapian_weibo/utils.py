@@ -191,31 +191,25 @@ def log_to_stub(stub_file_dir, dbpath, db_folder, remote_stub=False):
             else:
                 f.write(STUB_FILE_PER_LINE % {"db_folder": db_folder})
 
-def xml_to_json(filename):
+def xml_to_json(elem,item):
 
-    json_data = []#用以存储json格式的数组
-    weibo_item = {}
     user_item = {}
-    item = {}
-    for event, elem in ET.iterparse('%s.xml'%(filename)):#流式读取 读取的xml文件一定只有一个xml头标签
-        if event == 'end':#匹配tag结束符来读取数据
-            if elem.tag == 'status':#status表示一条微博记录
-                
-                status_items = elem.getchildren()
-                for status_item in status_items:
-                    weibo_item[status_item.tag] = item[status_item.tag]
-                json_data.append(weibo_item)#表示加载一条json记录，涉及到大数据时候可以加载一条读一条
-                
-            elif elem.tag == 'user':#user表示该微博的用户
-                us_items = elem.getchildren()
-                for us_item in us_items:
-                    user_item[us_item.tag] = item[us_item.tag]
-                item['user'] = user_item
-            else:
-                item[elem.tag] = elem.text
+    retweet_item = {}
+    if elem.tag == 'user':#user表示该微博的用户
+        us_items = elem.getchildren()
+        for us_item in us_items:
+            user_item[us_item.tag] = item[us_item.tag]
+        return user_item
             
-            print elem.tag,elem.text
-        elem.clear() # discard the element
+    elif elem.tag == 'retweeted_status':#retweeted_status表示原创微博
+        re_items = elem.getchildren()
+        for re_item in re_items:
+            retweet_item[re_item.tag] = item[re_item.tag]
+        return retweet_item
+                
+    else:
+        return elem.text
+            
 
     
 

@@ -5,17 +5,12 @@ import csv
 import json
 import sys
 import re
-from datetime import datetime
-from datetime import date
+sys.path.append('../xapian_weibo')
+from datetime import datetime, date
 from bs_input import KeyValueBSONInput
 from xml.dom import minidom
 from xml.etree import ElementTree
-from xml.etree.ElementTree import ElementTree
-from xml.etree.ElementTree import Element
-from xml.etree.ElementTree import SubElement
-from xml.etree.ElementTree import dump
-from xml.etree.ElementTree import Comment
-from xml.etree.ElementTree import tostring
+from xml.etree.ElementTree import ElementTree, Element, SubElement, dump, Comment, tostring  
 
 BSON_FILEPATH = "/opt/backup/mongodump/20130129/master_timeline/master_timeline_weibo.bson"
 
@@ -24,11 +19,37 @@ def load_bs(bs_filepath=BSON_FILEPATH):
     bs_input = KeyValueBSONInput(open(bs_filepath, 'rb'))
     return bs_input
 
+def buildET(name,root,text):#建立某个节点
+    item_data = Element(name)        
+    try:
+        item_data.text = str(text)
+    except UnicodeEncodeError:
+        item_data.text = text
+    root.append(item_data)
+    return root
+
+def subET(data,name,root):#建立某个节点的子节点
+    item_data = Element(name)
+    root.append(item_data)
+    SubElement(item_data, 'u_id').text = str(data['id'])
+    SubElement(item_data, 'u_name').text = data['name']
+    SubElement(item_data, 'u_gender').text = str(data['gender'])
+    SubElement(item_data, 'u_province').text = data['province']
+    SubElement(item_data, 'u_city').text = data['city']
+    SubElement(item_data, 'u_location').text = data['location']
+    SubElement(item_data, 'u_description').text = data['description']
+    SubElement(item_data, 'u_verified').text = str(data['verified'])
+    SubElement(item_data, 'u_followers_count').text = str(data['followers_count'])
+    SubElement(item_data, 'u_statuses_count').text = str(data['statuses_count'])
+    SubElement(item_data, 'u_friends_count').text = str(data['friends_count'])
+    SubElement(item_data, 'u_profile_image_url').text = str(data['profile_image_url'])
+    SubElement(item_data, 'u_bi_followers_count').text = str(data['bi_followers_count'])
+    SubElement(item_data, 'u_verified_type').text = str(data['verified_type'])
+    return root
+
 def load_weibo_from_bs():
     bs_input = load_bs()
-    count = 0
-    #hit_count = 0
-    #json_data = []
+    h = 0
     f = open('jsonTOXML.xml', 'w')
     f.write('<?xml version="1.0" encoding="utf-8"?>'+'\n'+'<statuses>')
     
@@ -42,92 +63,91 @@ def load_weibo_from_bs():
         attitudes_count = weibo['attitudes_count']
         geo = weibo['geo']
 
-        try:
-            user = weibo['user']
-            #print 'there is user'
-        except KeyError:
+        if 'user' not in weibo:
             continue
+        user = weibo['user']
+
         u_id = user['id']
         u_name = user['name']
         u_gender = user['gender']
         u_province = user['province']
         u_city = user['city']
         u_location = user['location']
-        try:
-            u_description = user['description']
-        except KeyError:
+
+        if 'description' not in user:
             continue
+        u_description = user['description']
+
         u_verified = user['verified']
         u_followers_count = user['followers_count']
         u_statuses_count = user['statuses_count']
         u_friends_count = user['friends_count']
         u_profile_image_url = user['profile_image_url']
         u_bi_followers_count = user['bi_followers_count']
-        try:
-            u_verified_type = user['verified_type']
-        except KeyError:
+
+        if 'verified_type' not in user:
+            continue
+        u_verified_type = user['verified_type']
+
+        if 'retweeted_status' not in weibo:
             continue
 
-        count = count + 1
-        print count
-        if count <= 100:
+        
+        h = h + 1
+        print h
+        if h > 100:
+            break
+        if not weibo['retweeted_status']:
             xml_data = ElementTree()
             root = Element('status')
             xml_data._setroot(root)
 
-            id_data = Element('id')
-            id_data.text = str(id)
-            root.append(id_data)
+            root = buildET('id',root,id)
+            root = buildET('created_at',root,created_at)
+            root = buildET('text',root,text)
+            root = buildET('source',root,source)
+            root = buildET('reposts_count',root,reposts_count)
+            root = buildET('comments_count',root,comments_count)
+            root = buildET('attitudes_count',root,attitudes_count)
+            root = buildET('geo',root,geo)
 
-            created_at_data = Element('created_at')
-            created_at_data.text = created_at
-            root.append(created_at_data)
-
-            text_data = Element('text')
-            text_data.text = text
-            root.append(text_data)
-
-            source_data = Element('source')
-            source_data.text = source
-            root.append(source_data)
-
-            reposts_count_data = Element('reposts_count')
-            reposts_count_data.text = str(reposts_count)
-            root.append(reposts_count_data)
-
-            comments_count_data = Element('comments_count')
-            comments_count_data.text = str(comments_count)
-            root.append(comments_count_data)
-
-            attitudes_count_data = Element('attitudes_count')
-            attitudes_count_data.text = str(attitudes_count)
-            root.append(attitudes_count_data)
-
-            geo_data = Element('geo')
-            geo_data.text = geo
-            root.append(geo_data)
-
-            user_data = Element('user')            
-            root.append(user_data)
-            SubElement(user_data, 'u_id').text = str(u_id)
-            SubElement(user_data, 'u_name').text = u_name
-            SubElement(user_data, 'u_gender').text = str(u_gender)
-            SubElement(user_data, 'u_province').text = u_province
-            SubElement(user_data, 'u_city').text = u_city
-            SubElement(user_data, 'u_location').text = u_location
-            SubElement(user_data, 'u_description').text = u_description
-            SubElement(user_data, 'u_verified').text = str(u_verified)
-            SubElement(user_data, 'u_followers_count').text = str(u_followers_count)
-            SubElement(user_data, 'u_statuses_count').text = str(u_statuses_count)
-            SubElement(user_data, 'u_friends_count').text = str(u_friends_count)
-            SubElement(user_data, 'u_profile_image_url').text = str(u_profile_image_url)
-            SubElement(user_data, 'u_bi_followers_count').text = str(u_bi_followers_count)
-            SubElement(user_data, 'u_verified_type').text = str(u_verified_type)
+            root = subET(user,'user',root)
 
             xml_data.write(f, 'utf-8')
             f.write('\n')
+
         else:
-            break
+            if 'description' not in weibo['retweeted_status']['user']:
+                continue
+            if 'user' not in weibo['retweeted_status']:
+                continue
+            if 'verified_type' not in weibo['retweeted_status']['user']:
+                continue
+            xml_data = ElementTree()
+            root = Element('status')
+            xml_data._setroot(root)
+
+            root = buildET('id',root,id)
+            root = buildET('created_at',root,created_at)
+            root = buildET('text',root,text)
+            root = buildET('source',root,source)
+            root = buildET('reposts_count',root,reposts_count)
+            root = buildET('comments_count',root,comments_count)
+            root = buildET('attitudes_count',root,attitudes_count)
+            root = buildET('geo',root,geo)
+
+            root = subET(user,'user',root)
+
+            retweeted_data = Element('retweeted_status')
+            root.append(retweeted_data)
+            SubElement(retweeted_data, 'r_id').text = str(weibo['retweeted_status']['mid'])
+            SubElement(retweeted_data, 'r_created').text = weibo['retweeted_status']['created_at']
+            SubElement(retweeted_data, 'r_text').text = weibo['retweeted_status']['text']
+            retweeted_data = subET(weibo['retweeted_status']['user'],'user',retweeted_data)
+
+            xml_data.write(f, 'utf-8')
+            f.write('\n')
+                
     f.write('\n'+'</statuses>')
     f.close()
 
