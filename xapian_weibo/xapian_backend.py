@@ -59,6 +59,8 @@ class Schema:
             {'field_name': 'name', 'column': 0, 'type': 'term'},
             {'field_name': 'location', 'column': 1, 'type': 'term'},
             {'field_name': 'province', 'column': 2, 'type': 'term'},
+            {'field_name': 'gender', 'column': 9, 'type': 'term'},
+            {'field_name': 'verified_type', 'column': 10, 'type': 'term'},
             # value
             {'field_name': '_id', 'column': 3, 'type': 'long'},
             {'field_name': 'followers_count', 'column': 4, 'type': 'long'},
@@ -159,6 +161,19 @@ class XapianSearch(object):
                 else:
                     item = r
                 yield item
+
+    def iter_all_xapian_terms(self, field):
+        db = self.database
+        if field == '_id':
+            prefix = DOCUMENT_ID_TERM_PREFIX
+        else:
+            prefix = DOCUMENT_CUSTOM_TERM_PREFIX + field.upper()
+
+        term_iter = db.allterms_begin(prefix)
+        while term_iter != db.allterms_end(prefix):
+            term = term_iter.get_term()
+            yield term.lstrip(prefix)
+            term_iter.next()
 
     @fields_not_empty
     def search_by_id(self, id_, fields=None):
