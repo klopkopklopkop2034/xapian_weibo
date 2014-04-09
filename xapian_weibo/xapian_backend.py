@@ -6,7 +6,8 @@ from query_base import parse_query
 from utils import local2unix
 import os
 import xapian
-import msgpack
+import cPickle as pickle
+import zlib
 
 
 SCHEMA_VERSION = XAPIAN_SEARCH_DEFAULT_SCHEMA_VERSION
@@ -19,9 +20,9 @@ class Schema:
     v2 = {
         'db': 'master_timeline',
         'collection': 'master_timeline_weibo',
-        'origin_data_iter_keys': ['_id', 'user', 'retweeted_status', 'text', 'timestamp', 'reposts_count', 'source', 'bmiddle_pic', 'geo'],
-        'index_item_iter_keys': ['retweeted_status', 'user'],
-        'index_value_iter_keys': ['_id', 'timestamp', 'reposts_count'],
+        'origin_data_iter_keys': ['_id', 'user', 'retweeted_status', 'text', 'timestamp', 'reposts_count', 'source', 'bmiddle_pic', 'geo', 'attitudes_count', 'comments_count', 'sentiment'],
+        'index_item_iter_keys': ['retweeted_status', 'user', 'sentiment'],
+        'index_value_iter_keys': ['_id', 'timestamp', 'reposts_count', 'attitudes_count', 'comments_count'],
         'pre_func': {
             'user': lambda x: x['id'] if x else 0,
             'retweeted_status': lambda x: x['id'] if x else 0,
@@ -34,10 +35,13 @@ class Schema:
             {'field_name': 'user', 'column': 0, 'type': 'long'},
             {'field_name': 'retweeted_status', 'column': 1, 'type': 'long'},
             {'field_name': 'text', 'column': 2, 'type': 'text'},
+            {'field_name': 'sentiment', 'column': 8, 'type': 'int'},
             # value
             {'field_name': '_id', 'column': 3, 'type': 'long'},
             {'field_name': 'timestamp', 'column': 4, 'type': 'long'},
             {'field_name': 'reposts_count', 'column': 5, 'type': 'long'},
+            {'field_name': 'attitudes_count', 'column': 6, 'type': 'long'},
+            {'field_name': 'comments_count', 'column': 7, 'type': 'long'},
         ],
     }
 
@@ -45,10 +49,10 @@ class Schema:
         'db': 'master_timeline',
         'collection': 'master_timeline_user',
         'origin_data_iter_keys': ['_id', 'province', 'city', 'verified', 'name', 'friends_count',
-                                  'bi_followers_count', 'gender', 'profile_image_url', 'verified_reason', 'verified_type',
-                                  'followers_count', 'followers', 'location', 'active', 'statuses_count', 'friends', 'description', 'created_at'],
+                                  'gender', 'profile_image_url', 'verified_type',
+                                  'followers_count', 'followers', 'location', 'statuses_count', 'friends', 'description', 'created_at'],
         'index_item_iter_keys': ['name', 'location', 'province'],
-        'index_value_iter_keys': ['_id', 'created_at', 'followers_count', 'statuses_count', 'friends_count', 'bi_followers_count'],
+        'index_value_iter_keys': ['_id', 'created_at', 'followers_count', 'statuses_count', 'friends_count'],
         'pre_func': {
             'created_at': lambda x: local2unix(x) if x else 0,
         },
@@ -67,11 +71,12 @@ class Schema:
             {'field_name': 'followers_count', 'column': 4, 'type': 'long'},
             {'field_name': 'statuses_count', 'column': 5, 'type': 'long'},
             {'field_name': 'friends_count', 'column': 6, 'type': 'long'},
-            {'field_name': 'bi_followers_count', 'column': 7, 'type': 'long'},
-            {'field_name': 'created_at', 'column': 8, 'type': 'long'},
+            {'field_name': 'created_at', 'column': 7, 'type': 'long'},
         ],
     }
 
+    """
+    注释掉，暂时保留
     v3 = {
         'origin_data_iter_keys': ['_id'],
         'index_item_iter_keys': ['user', 'sentiment'],
@@ -91,6 +96,50 @@ class Schema:
             {'field_name': '_id', 'column': 3, 'type': 'long'},
             {'field_name': 'timestamp', 'column': 4, 'type': 'long'},
             {'field_name': 'reposts_count', 'column': 5, 'type': 'long'},
+        ],
+    }
+    """
+
+    v4 = {
+        'origin_data_iter_keys': ['_id', 'domain', 'province', 'city', 'verified', 'name', 'friends_count',
+                                  'bi_followers_count', 'gender', 'profile_image_url', 'verified_reason', 'verified_type',
+                                  'followers_count', 'followers', 'location', 'active', 'statuses_count', 'friends', 'description', 'created_at'],
+        'index_item_iter_keys': [],
+        'index_value_iter_keys': ['_id', 'followers_count'],
+        'pre_func': {
+            'created_at': lambda x: local2unix(x) if x else 0,
+        },
+        'obj_id': '_id',
+        # 用于去重的value no(column)
+        'collapse_valueno': 0,
+        'idx_fields': [
+            # term
+            {'field_name': 'domain', 'column': 1, 'type': 'term'},
+            # value
+            {'field_name': '_id', 'column': 0, 'type': 'long'},
+            {'field_name': 'followers_count', 'column': 2, 'type': 'long'},
+        ],
+    }
+
+    v5 = {
+        'origin_data_iter_keys': ['_id', 'user', 'retweeted_uid', 'retweeted_mid', 'text', 'timestamp', 'reposts_count', 'source', 'bmiddle_pic', 'geo', 'attitudes_count', 'comments_count', 'sentiment'],
+        'index_item_iter_keys': ['retweeted_mid', 'user', 'sentiment'],
+        'index_value_iter_keys': ['_id', 'timestamp', 'reposts_count', 'comments_count'],
+        'obj_id': '_id',
+        # 用于去重的value no(column)
+        'collapse_valueno': 3,
+        'idx_fields': [
+            # term
+            {'field_name': 'user', 'column': 0, 'type': 'long'},
+            {'field_name': 'retweeted_mid', 'column': 1, 'type': 'long'},
+            {'field_name': 'text', 'column': 2, 'type': 'text'},
+            {'field_name': 'sentiment', 'column': 8, 'type': 'int'},
+            # value
+            {'field_name': '_id', 'column': 3, 'type': 'long'},
+            {'field_name': 'timestamp', 'column': 4, 'type': 'long'},
+            {'field_name': 'reposts_count', 'column': 5, 'type': 'long'},
+            #{'field_name': 'attitudes_count', 'column': 7, 'type': 'long'},#目前缺少这一字段用None表示
+            {'field_name': 'comments_count', 'column': 6, 'type': 'long'},
         ],
     }
 
@@ -114,11 +163,15 @@ class XapianSearch(object):
             return db1
 
         if stub:
-            if os.path.isfile(stub):
+            # 如果是list，默认全部为文件
+            if isinstance(stub, list):
+                self.database = reduce(merge,
+                                       map(_stub_database, stub))
+            elif os.path.isfile(stub):
                 self.database = _stub_database(stub)
             elif os.path.isdir(stub):
                 self.database = reduce(merge,
-                                       map(_stub_database, [p for p in os.listdir(stub)]))
+                                       map(_stub_database, [os.path.join(stub, p) for p in os.listdir(stub)]))
         else:
             self.database = reduce(merge,
                                    map(create, [os.path.join(path, p) for p in os.listdir(path) if p.startswith('_%s' % name)]))
@@ -138,10 +191,10 @@ class XapianSearch(object):
     def iter_all_docs(self, fields=None):
         db = self.database
         match_all = ""
-        postlist = db.postlist(match_all)
+        postlist_iter = db.postlist(match_all)
         while 1:
             try:
-                plitem = postlist.next()
+                plitem = postlist_iter.next()
             except StopIteration:
                 break
 
@@ -158,7 +211,8 @@ class XapianSearch(object):
         term_iter = db.allterms_begin(prefix)
         while term_iter != db.allterms_end(prefix):
             term = term_iter.get_term()
-            yield term.lstrip(prefix)
+            termfreq = term_iter.get_termfreq()
+            yield term.lstrip(prefix), termfreq
             term_iter.next()
 
     @fields_not_empty
@@ -174,13 +228,13 @@ class XapianSearch(object):
         return self._extract_item(doc, fields)
 
     @fields_not_empty
-    def search(self, query=None, sort_by=None, start_offset=0,
-               max_offset=None, fields=None, count_only=False, **kwargs):
+    def search(self, query=None, parsed_query=None, sort_by=None, start_offset=0,
+               max_offset=None, fields=None, count_only=False, mset_direct=False, **kwargs):
 
         db = self.database
         enquire = self.enquire
 
-        query = parse_query(query, self.schema, db)
+        query = parsed_query if parsed_query else parse_query(query, self.schema, db)
         if xapian.Query.empty(query):
             return 0, lambda: []
 
@@ -198,6 +252,9 @@ class XapianSearch(object):
         mset = self._get_enquire_mset(db, enquire, start_offset, max_offset)
         mset.fetch()  # 提前fetch，加快remote访问速度
 
+        if mset_direct:
+            return mset
+
         def result_generator():
             for match in mset:
                 yield self._extract_item(match.document, fields)
@@ -205,7 +262,7 @@ class XapianSearch(object):
         return mset.size(), result_generator
 
     def _extract_item(self, doc, fields):
-        r = msgpack.unpackb(self._get_document_data(self.database, doc))
+        r = pickle.loads(zlib.decompress(self._get_document_data(self.database, doc)))
         if fields is not None:
             item = {}
             for field in fields:
@@ -331,15 +388,22 @@ def _stub_database(stub):
     f = open(stub, 'U')
     dbpaths = f.readlines()
     f.close()
+    dbpaths = [p.strip() for p in dbpaths]
     if not dbpaths[0].startswith('remote'):
         # local database
         database = xapian.open_stub(stub)
         return database
 
-    dbpaths = [p.lstrip('remote ssh ') for p in dbpaths]
+    # 默认stub里要么全是remote，要么全不是，去掉"ssh remote "
+    # dbpaths = [p[11:] for p in dbpaths]
+
+    # 默认stub里要么全是remote，要么全不是，去掉"remote "
+    dbpaths = [p[7:] for p in dbpaths]
 
     def create(dbpath):
-        return xapian.remote_open('ssh', dbpath, XAPIAN_REMOTE_OPEN_TIMEOUT)
+        # return xapian.remote_open('ssh', dbpath, XAPIAN_REMOTE_OPEN_TIMEOUT)
+        host, port = dbpath.split(':')
+        return xapian.remote_open(host, int(port), XAPIAN_REMOTE_OPEN_TIMEOUT)
 
     def merge(db1, db2):
         db1.add_database(db2)
